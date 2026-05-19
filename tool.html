@@ -132,7 +132,9 @@ body { background: #F4F1EC; color: var(--text); font-family: 'DM Sans', sans-ser
 .roster-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
 .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
 .player-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.player-card-head { display: flex; align-items: center; gap: 8px; padding: 9px 11px; background: #0E2340; border-bottom: 1px solid var(--border); }
+.player-card-head { display: flex; align-items: center; gap: 8px; padding: 9px 11px; background: #0E2340; border-bottom: 1px solid var(--border); overflow: hidden; min-width: 0; }
+.player-card-head .player-name-input { flex: 1; min-width: 0; }
+.player-remove { flex-shrink: 0; margin-left: auto; }
 .player-number { font-family: 'Bebas Neue', sans-serif; font-size: 18px; color: #D4A017; width: 22px; text-align: center; flex-shrink: 0; }
 .player-name-input { flex: 1; background: transparent; border: none; color: #FFFFFF; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700; outline: none; }
 .player-name-input::placeholder { color: var(--pos-OUT); font-weight: 400; }
@@ -1100,7 +1102,7 @@ function addPlayer(silent=false) {
   const pid = nextPlayerId++;
   team.players.push({ id: pid, name: '', ifPos: [], ofPos: [], throws: 'R' });
   team.battingOrder.push(pid);
-  if (!silent) { saveCurrentTeam(); renderRoster(); }
+  if (!silent) { saveCurrentTeam(); renderRoster(); if (typeof isMobile === 'function' && isMobile()) mobRenderRoster(); }
 }
 
 function removePlayer(pid) {
@@ -1111,6 +1113,7 @@ function removePlayer(pid) {
   });
   saveCurrentTeam();
   renderRoster();
+  if (typeof isMobile === 'function' && isMobile()) mobRenderRoster();
 }
 
 function setAllOf() {
@@ -2956,7 +2959,7 @@ document.addEventListener('DOMContentLoaded', function initResponsive(){
     <input class="license-input" id="license-input" type="text" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
     <div class="license-err" id="license-err"></div>
     <button class="license-btn" onclick="submitLicense()">Unlock →</button>
-    <div class="license-help">Purchased but lost your key? Email <a href="mailto:hello@lineupcard.ai">hello@lineupcard.ai</a></div>
+    <div class="license-help"> </a></div>
   </div>
 </div>
 
