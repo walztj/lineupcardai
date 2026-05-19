@@ -1116,12 +1116,14 @@ function removePlayer(pid) {
 function setAllOf() {
   team.players.forEach(p => { p.ofPos = [...OF_POSITIONS]; });
   saveCurrentTeam(); renderRoster();
+  if (typeof isMobile === 'function' && isMobile()) mobRenderRoster();
 }
 
 function clearAllPositions() {
   if (!confirm('Clear all position assignments?')) return;
   team.players.forEach(p => { p.ifPos = []; p.ofPos = []; });
   saveCurrentTeam(); renderRoster();
+  if (typeof isMobile === 'function' && isMobile()) mobRenderRoster();
 }
 
 function updatePlayerName(pid, name) {
