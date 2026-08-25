@@ -616,6 +616,14 @@ body { background: #F4F1EC; color: var(--text); font-family: 'DM Sans', sans-ser
         <div class="section-head">⚙ Game Rules</div>
         <div class="section-body">
           <div class="field">
+            <label class="field-label">Outfielders on the Field</label>
+            <div class="range-row">
+              <input class="range-input" type="range" id="ofCount" min="3" max="5" value="3" oninput="setOfCount(this.value)">
+              <div class="range-val" id="ofCountVal">3</div>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">3 OF = 9 in the field &middot; 4 OF = 10 &middot; 5 OF = 11</div>
+          </div>
+          <div class="field">
             <label class="field-label">Innings per Game</label>
             <div class="range-row"><input class="range-input" type="range" id="numInnings" min="4" max="9" value="6" oninput="updateRange('numInnings','inningsVal');saveCurrentTeam()"><div class="range-val" id="inningsVal">6</div></div>
             <div class="field-hint">Most youth leagues play 6 innings</div>
@@ -769,7 +777,7 @@ let activeTeamId = null;
 
 function defaultTeamState(name='') {
   return {
-    settings: { teamName: name, leagueName: '', seasonYear: '', numInnings: 6, sitGap: 3, ifRepDeadline: 4 },
+    settings: { teamName: name, leagueName: '', seasonYear: '', numInnings: 6, sitGap: 3, ifRepDeadline: 4, ofCount: 3 },
     players: [],
     positionPriority: {},
     battingOrder: [],
@@ -819,6 +827,9 @@ function loadTeam(id) {
   if (!data) return false;
   activeTeamId = id;
   team = data;
+  // Teams saved before variable-outfield support default to 3
+  if (![3,4,5].includes(parseInt(team.settings.ofCount))) team.settings.ofCount = 3;
+  team.players.forEach(p => { p.ofPos = p.ofPos || []; p.ifPos = p.ifPos || []; });
   nextPlayerId = team.players.length > 0 ? Math.max(...team.players.map(p => p.id)) + 1 : 1;
   // Sync batting order
   team.players.forEach(p => { if (!team.battingOrder.includes(p.id)) team.battingOrder.push(p.id); });
@@ -1052,6 +1063,9 @@ function loadSettingsUI() {
   document.getElementById('sitGapVal').textContent = s.sitGap;
   document.getElementById('ifRepDeadline').value = s.ifRepDeadline;
   document.getElementById('ifRepVal').textContent = s.ifRepDeadline;
+  const ofc = ofCount();
+  const ofEl = document.getElementById('ofCount'); if (ofEl) ofEl.value = ofc;
+  const ofVal = document.getElementById('ofCountVal'); if (ofVal) ofVal.textContent = ofc;
 }
 
 function updateRange(inputId, valId) {
@@ -1062,21 +1076,47 @@ function updateRange(inputId, valId) {
 // ROSTER
 // ═══════════════════════════════════════════════════════════
 const IF_POSITIONS = ['C','1B','2B','3B','SS'];
-const OF_POSITIONS = ['LF','CF','RF'];
-const ALL_NON_P    = ['C','1B','2B','3B','SS','LF','CF','RF'];
-const FIELD_9      = ['P','C','1B','2B','3B','SS','LF','CF','RF'];
 const PREF_POSITIONS = ['C','1B','2B','3B','SS'];
-const FIELD_COORDS = {
-  'P':  {x:309, y:332},
-  'C':  {x:309, y:422},
-  '1B': {x:395, y:327},
-  '2B': {x:354, y:252},
-  '3B': {x:201, y:327},
-  'SS': {x:249, y:252},
-  'LF': {x:145, y:151},
-  'CF': {x:299, y:76},
-  'RF': {x:457, y:148},
+
+// ── VARIABLE OUTFIELD SUPPORT ──
+// Some youth leagues field 4 or 5 outfielders so more kids play at once.
+// Position lists below are functions, not constants, so every part of the
+// app (solver, tables, field view, print) reflects the team's setting.
+const OF_LAYOUTS = {
+  3: ['LF','CF','RF'],
+  4: ['LF','LCF','RCF','RF'],
+  5: ['LF','LCF','CF','RCF','RF'],
 };
+const ALL_OF_POSITIONS = ['LF','LCF','CF','RCF','RF'];
+
+function ofCount() {
+  const n = parseInt(team?.settings?.ofCount);
+  return (n === 3 || n === 4 || n === 5) ? n : 3;
+}
+function getOfPositions()    { return OF_LAYOUTS[ofCount()]; }
+function getAllNonP()        { return [...IF_POSITIONS, ...getOfPositions()]; }
+function getFieldPositions() { return ['P', ...IF_POSITIONS, ...getOfPositions()]; }
+function fielderCount()      { return 6 + ofCount(); }   // P + 5 IF + N OF
+function isOfPos(pos)        { return ALL_OF_POSITIONS.includes(pos); }
+
+const FIELD_COORDS_BY_COUNT = {
+  3: {
+    'P':{x:309,y:332}, 'C':{x:309,y:422}, '1B':{x:395,y:327}, '2B':{x:354,y:252},
+    '3B':{x:201,y:327}, 'SS':{x:249,y:252},
+    'LF':{x:145,y:151}, 'CF':{x:299,y:76}, 'RF':{x:457,y:148},
+  },
+  4: {
+    'P':{x:309,y:332}, 'C':{x:309,y:422}, '1B':{x:395,y:327}, '2B':{x:354,y:252},
+    '3B':{x:201,y:327}, 'SS':{x:249,y:252},
+    'LF':{x:120,y:170}, 'LCF':{x:232,y:80}, 'RCF':{x:378,y:80}, 'RF':{x:487,y:168},
+  },
+  5: {
+    'P':{x:309,y:332}, 'C':{x:309,y:422}, '1B':{x:395,y:327}, '2B':{x:354,y:252},
+    '3B':{x:201,y:327}, 'SS':{x:249,y:252},
+    'LF':{x:110,y:186}, 'LCF':{x:196,y:96}, 'CF':{x:305,y:62}, 'RCF':{x:415,y:96}, 'RF':{x:500,y:184},
+  },
+};
+function getFieldCoords() { return FIELD_COORDS_BY_COUNT[ofCount()]; }
 
 function setThrows(pid, hand, el) {
   const p = team.players.find(p => p.id === pid);
@@ -1117,7 +1157,7 @@ function removePlayer(pid) {
 }
 
 function setAllOf() {
-  team.players.forEach(p => { p.ofPos = [...OF_POSITIONS]; });
+  team.players.forEach(p => { p.ofPos = [...getOfPositions()]; });
   saveCurrentTeam(); renderRoster();
   if (typeof isMobile === 'function' && isMobile()) mobRenderRoster();
 }
@@ -1183,7 +1223,7 @@ function renderRoster() {
         <div class="pos-section-label">Infield</div>
         <div class="pos-toggles">${IF_POSITIONS.map(pos=>`<span class="pos-toggle ${p.ifPos.includes(pos)?'on-if':''}" onclick="togglePos(${p.id},'if','${pos}',this)">${pos}</span>`).join('')}</div>
         <div class="pos-section-label">Outfield</div>
-        <div class="pos-toggles">${OF_POSITIONS.map(pos=>`<span class="pos-toggle ${p.ofPos.includes(pos)?'on-of':''}" onclick="togglePos(${p.id},'of','${pos}',this)">${pos}</span>`).join('')}</div>
+        <div class="pos-toggles">${getOfPositions().map(pos=>`<span class="pos-toggle ${p.ofPos.includes(pos)?'on-of':''}" onclick="togglePos(${p.id},'of','${pos}',this)">${pos}</span>`).join('')}</div>
       </div>`;
     grid.appendChild(card);
   });
@@ -1317,11 +1357,52 @@ function refreshPrefsGrid() {
 // ═══════════════════════════════════════════════════════════
 // SOLVER
 // ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════
+// OUTFIELD COUNT
+// ═══════════════════════════════════════════════════════════
+// When a coach changes the number of outfielders, any player already cleared
+// for the outfield is automatically cleared for the new spots. No re-checking
+// every kid on the roster.
+function syncOfEligibility() {
+  if (!activeTeamId || !team.players) return;
+  const active = getOfPositions();
+  team.players.forEach(p => {
+    p.ofPos = p.ofPos || [];
+    if (p.ofPos.some(x => isOfPos(x))) p.ofPos = [...active];
+    else p.ofPos = p.ofPos.filter(x => active.includes(x));
+  });
+  Object.keys(team.positionPriority || {}).forEach(pos => {
+    if (isOfPos(pos) && !active.includes(pos)) delete team.positionPriority[pos];
+  });
+}
+
+function setOfCount(n) {
+  n = parseInt(n);
+  if (![3,4,5].includes(n) || !activeTeamId) return;
+  team.settings.ofCount = n;
+  syncOfEligibility();
+  generatedLineup = null;
+  saveCurrentTeam();
+  const isMob = (typeof isMobile === 'function') && isMobile();
+  if (isMob) { if (typeof mobRenderRoster === 'function') mobRenderRoster(); }
+  else if (document.getElementById('rosterGrid')) renderRoster();
+  const rp = document.getElementById('resultPanel');
+  if (rp) rp.style.display = 'none';
+  const l1 = document.getElementById('ofCountVal'); if (l1) l1.textContent = n;
+  const l2 = document.getElementById('mob-ofCountVal'); if (l2) l2.textContent = n;
+  if (typeof refreshPrefsGrid === 'function') refreshPrefsGrid();
+  showToast(`Outfield set to ${n} — ${6+n} players in the field`);
+}
+
 function eligible(pid, pos) {
   if (pos==='P') return true;
   const p = team.players.find(p=>p.id===pid);
   if (!p) return false;
-  return p.ifPos.includes(pos)||p.ofPos.includes(pos);
+  // A kid cleared for any outfield spot can fill any outfield spot, so LCF/RCF
+  // work the moment a league switches to 4 or 5 outfielders.
+  if (isOfPos(pos)) return (p.ofPos||[]).some(x => isOfPos(x));
+  return p.ifPos.includes(pos);
 }
 
 function canFillAll(fielders, positions) {
@@ -1343,11 +1424,11 @@ function canFillAll(fielders, positions) {
 function isBenchValid(bench, available, mustPlay, inn, hadIfRep, enforceIfRep=true) {
   const onField = available.filter(pid => mustPlay.includes(pid) || !bench.includes(pid));
   // Check every position has at least one eligible player
-  for (const pos of ALL_NON_P) {
+  for (const pos of getAllNonP()) {
     if (!onField.some(pid => eligible(pid, pos))) return false;
   }
   // Check fielders can actually be uniquely assigned to all 8 positions
-  if (!canFillAll(onField, ALL_NON_P)) return false;
+  if (!canFillAll(onField, getAllNonP())) return false;
   // Optionally check ifRep deadline
   if (enforceIfRep) {
     const { ifRepDeadline } = team.settings;
@@ -1366,6 +1447,7 @@ function isBenchValid(bench, available, mustPlay, inn, hadIfRep, enforceIfRep=tr
 }
 
 function findValidBench(candidates, n, available, mustPlay, inn, hadIfRep, enforceIfRep=true) {
+  if (n === 0) return [];   // full roster on the field — nobody sits
   // Greedy pass
   const greedy = [];
   for (const id of candidates) {
@@ -1374,24 +1456,29 @@ function findValidBench(candidates, n, available, mustPlay, inn, hadIfRep, enfor
   }
   if (greedy.length === n) return greedy;
   if (candidates.length < n) return null;
-  // Combination search
-  for (let i = 0; i < candidates.length; i++) {
-    for (let j = i+1; j < candidates.length; j++) {
-      if (n === 2) {
-        const c = [candidates[i], candidates[j]];
-        if (isBenchValid(c, available, mustPlay, inn, hadIfRep, enforceIfRep)) return c;
-      }
-      for (let k = j+1; n >= 3 && k < candidates.length; k++) {
-        const c = [candidates[i], candidates[j], candidates[k]];
-        if (isBenchValid(c, available, mustPlay, inn, hadIfRep, enforceIfRep)) return c;
-        for (let l = k+1; n >= 4 && l < candidates.length; l++) {
-          const c4 = [candidates[i], candidates[j], candidates[k], candidates[l]];
-          if (isBenchValid(c4, available, mustPlay, inn, hadIfRep, enforceIfRep)) return c4;
-        }
-      }
+
+  // Exhaustive combination search of size n. Bench size changes with the
+  // outfield setting, so this handles any n rather than hardcoding 2-4.
+  let checks = 0;
+  const MAX_CHECKS = 20000;
+  let found = null;
+  const combo = [];
+  (function search(start) {
+    if (found || checks > MAX_CHECKS) return;
+    if (combo.length === n) {
+      checks++;
+      if (isBenchValid(combo, available, mustPlay, inn, hadIfRep, enforceIfRep)) found = [...combo];
+      return;
     }
-  }
-  return null;
+    for (let i = start; i < candidates.length; i++) {
+      if (found || checks > MAX_CHECKS) return;
+      if (candidates.length - i < n - combo.length) return; // prune
+      combo.push(candidates[i]);
+      search(i + 1);
+      combo.pop();
+    }
+  })(0);
+  return found;
 }
 
 // Position proximity map: if a player can't fill their assigned position,
@@ -1400,35 +1487,31 @@ function findValidBench(candidates, n, available, mustPlay, inn, hadIfRep, enfor
 // Returns ordered list of fallback positions for a player who can't fill their assigned spot
 function getPosProximity(pos, throws) {
   const L = throws === 'L';
+  const OF = getOfPositions();
+  // Outfield spots sorted by how close they sit to `pos` in the current layout
+  const ofNear = (p) => {
+    const i = OF.indexOf(p);
+    if (i === -1) return [...OF];
+    return [...OF].sort((a,b) => Math.abs(OF.indexOf(a)-i) - Math.abs(OF.indexOf(b)-i));
+  };
+
   if (L) {
-    // Lefties: natural positions are 1B, OF, P
-    // Never reasonable: SS, 2B, 3B, C (glove on wrong side)
-    const leftyFallbacks = {
-      '1B': ['1B','LF','CF','RF'],
-      'LF': ['LF','CF','RF','1B'],
-      'CF': ['CF','LF','RF','1B'],
-      'RF': ['RF','CF','LF','1B'],
-      'P':  ['1B','LF','CF','RF'],
-      // If somehow assigned infield, fall back to OF/1B only
-      'C':  ['1B','LF','CF','RF'],
-      '2B': ['1B','LF','CF','RF'],
-      '3B': ['1B','LF','CF','RF'],
-      'SS': ['1B','LF','CF','RF'],
-    };
-    return leftyFallbacks[pos] || ['LF','CF','RF','1B'];
+    // Lefties: natural spots are 1B, OF, P. Never SS/2B/3B/C.
+    if (isOfPos(pos)) return [...ofNear(pos), '1B'];
+    const leftySafe = ['1B', ...OF];
+    const leftyFallbacks = { '1B': ['1B', ...OF], 'P': leftySafe, 'C': leftySafe,
+                             '2B': leftySafe, '3B': leftySafe, 'SS': leftySafe };
+    return leftyFallbacks[pos] || [...OF, '1B'];
   } else {
-    // Righties: can play any position, proximity by position type
+    if (isOfPos(pos)) return ofNear(pos);
     const rightyFallbacks = {
       'C':  ['C','3B','1B','2B'],
       '1B': ['1B','3B','2B','C'],
       '2B': ['2B','SS','3B','1B'],
       '3B': ['3B','SS','2B','1B'],
       'SS': ['SS','2B','3B'],
-      'LF': ['LF','CF','RF'],
-      'CF': ['CF','LF','RF'],
-      'RF': ['RF','CF','LF'],
     };
-    return rightyFallbacks[pos] || ['LF','CF','RF'];
+    return rightyFallbacks[pos] || [...OF];
   }
 }
 
@@ -1584,8 +1667,9 @@ function generateLineup() {
     if(!team.pitcherByInning[i]){showErr(`Please select a pitcher for Inning ${i+1}.`);return;}
   }
   const active=team.players.filter(p=>p.name&&p.active!==false);
-  if(active.length<9){showErr(`Only ${active.length} active players. Need at least 9.`);return;}
-  const benchPerInning=active.length-9;
+  const needed = fielderCount();
+  if(active.length<needed){showErr(`Only ${active.length} active players. Need at least ${needed} for a ${ofCount()}-outfielder lineup.`);return;}
+  const benchPerInning=active.length-needed;
   for(let i=0;i<s.numInnings;i++){
     if(!active.find(p=>p.name===team.pitcherByInning[i])){showErr(`Pitcher for Inning ${i+1} is not in the active roster.`);return;}
   }
@@ -1652,7 +1736,7 @@ function solve(active, benchPerInning) {
 
     const remaining = available.filter(id => !usedThisInning.has(id))
       .sort((a,b) => team.battingOrder.indexOf(a) - team.battingOrder.indexOf(b));
-    for (const pos of ['LF','CF','RF']) {
+    for (const pos of getOfPositions()) {
       const player = remaining.find(id => !usedThisInning.has(id) && eligible(id,pos))
                   ?? remaining.find(id => !usedThisInning.has(id));
       if (player !== undefined) { lineup[inn][pos] = player; usedThisInning.add(player); }
@@ -1730,12 +1814,45 @@ function solve(active, benchPerInning) {
 
     const fielders = available.filter(id => !bench.includes(id));
     // No-fail greedyAssign — always fills, records violations internally
-    const assigned = greedyAssign(fielders, ALL_NON_P, inn, hadIfRep, violations);
+    const assigned = greedyAssign(fielders, getAllNonP(), inn, hadIfRep, violations);
 
     Object.entries(assigned).forEach(([pos, pid]) => {
       lineup[inn][pos] = pid;
       if (IF_POSITIONS.includes(pos) && !hadIfRep[pid]) hadIfRep[pid] = true;
     });
+  }
+
+  // ── INFIELD REP AUDIT ──
+  // There are only 6 infield spots per inning no matter how many outfielders
+  // play. With 4 or 5 OF, more kids are on the field but fewer get infield
+  // reps, so the deadline can become mathematically impossible. Say so plainly
+  // instead of printing a card that quietly breaks the coach's own rule.
+  {
+    const deadline = s.ifRepDeadline;
+    const gotIf = {};
+    activeIds.forEach(id => gotIf[id] = false);
+    for (let inn = 0; inn < Math.min(deadline, s.numInnings); inn++) {
+      Object.entries(lineup[inn]).forEach(([pos, pid]) => {
+        if (pos === 'P' || IF_POSITIONS.includes(pos)) gotIf[pid] = true;
+      });
+    }
+    const missed = activeIds.filter(id => {
+      if (gotIf[id]) return false;
+      const p = team.players.find(p => p.id === id);
+      return p && (p.ifPos || []).length > 0;
+    });
+    if (missed.length > 0) {
+      const names = missed.map(id => team.players.find(p => p.id === id)?.name).filter(Boolean).join(', ');
+      const capacity = 6 * Math.min(deadline, s.numInnings);
+      violations.push({
+        inn: deadline, pos: 'INFIELD', pid: null, playerName: null,
+        type: 'infield_rep_missed',
+        message: `No infield time by inning ${deadline} for: ${names}`,
+        suggestion: activeIds.length > capacity
+          ? `Only ${capacity} infield spots exist through inning ${deadline}, but ${activeIds.length} players need one. Raise the infield rep deadline in Settings, or use fewer outfielders.`
+          : `Raise the infield rep deadline in Settings, or give these players more infield positions in Roster.`,
+      });
+    }
   }
 
   return { lineup, sitCount, benchByInning, violations };
@@ -1773,12 +1890,12 @@ function renderFieldView(){
   const PW=96, PH=28;
 
   // Field position pills
-  FIELD_9.forEach(pos=>{
+  getFieldPositions().forEach(pos=>{
     const pid=lineup[inn][pos];
     if(pid===undefined||pid===null)return;
     const p=team.players.find(p=>p.id===pid);
     if(!p)return;
-    const c=FIELD_COORDS[pos];
+    const c=getFieldCoords()[pos];
     const fo=document.createElementNS('http://www.w3.org/2000/svg','foreignObject');
     fo.setAttribute('x',c.x-PW/2);
     fo.setAttribute('y',c.y-PH/2);
@@ -1890,7 +2007,7 @@ function renderResultTables() {
     for (let inn = 0; inn < numI; inn++) {
       const pos = getPos(lineup[inn], pid, benchByInning[inn]);
       if (['1B','2B','3B','SS'].includes(pos)) ifCount++;
-      if (['LF','CF','RF'].includes(pos)) ofCount++;
+      if (isOfPos(pos)) ofCount++;
     }
     html += '<td class="stat-cell"><span class="sits-chip' + (s2>=2?' high':'') + '">' + s2 + '</span></td>';
     html += '<td class="cif stat-cell" style="font-weight:700;">' + (ifCount||'') + '</td>';
@@ -1902,7 +2019,7 @@ function renderResultTables() {
 
   // TABLE 2 (now): Position × Inning
   html += `<div class="table-title">By Position</div><div style="overflow-x:auto;"><table class="lineup-tbl"><thead><tr><th>POS</th>${innH}</tr></thead><tbody>`;
-  FIELD_9.forEach(pos => {
+  getFieldPositions().forEach(pos => {
     const cls = pos==='P'?'cp':pos==='C'?'cc':IF_POSITIONS.includes(pos)?'cif':'cof';
     html += `<tr><td class="${cls}" style="font-family:'DM Mono',monospace;font-weight:700;">${pos}</td>`;
     for (let inn = 0; inn < numI; inn++) {
@@ -2020,6 +2137,9 @@ function mobLoadSettings() {
   if (g('mob-numInnings')) { g('mob-numInnings').value = s.numInnings; g('mob-inningsVal').textContent = s.numInnings; }
   if (g('mob-sitGap')) { g('mob-sitGap').value = s.sitGap; g('mob-sitGapVal').textContent = s.sitGap; }
   if (g('mob-ifRepDeadline')) { g('mob-ifRepDeadline').value = s.ifRepDeadline; g('mob-ifRepVal').textContent = s.ifRepDeadline; }
+  const ofc = ofCount();
+  if (g('mob-ofCount')) g('mob-ofCount').value = ofc;
+  if (g('mob-ofCountVal')) g('mob-ofCountVal').textContent = ofc;
 }
 
 function mobSyncSettings() {
@@ -2055,7 +2175,7 @@ function mobRenderRoster() {
       const on = p.ifPos.includes(pos);
       return `<span class="mob-pos-chip${on?' on-if':''}" onclick="togglePos(${p.id},'if','${pos}',this)">${pos}</span>`;
     }).join('');
-    const ofOpts = ['LF','CF','RF'].map(pos => {
+    const ofOpts = getOfPositions().map(pos => {
       const on = p.ofPos.includes(pos);
       return `<span class="mob-pos-chip${on?' on-of':''}" onclick="togglePos(${p.id},'of','${pos}',this)">${pos}</span>`;
     }).join('');
@@ -2235,7 +2355,7 @@ function printLineup() {
 
   // By Position table
   let t2 = `<table><thead><tr><th>POS</th>${innH}</tr></thead><tbody>`;
-  FIELD_9.forEach(pos => {
+  getFieldPositions().forEach(pos => {
     const cls = pos==='P'?'cp':pos==='C'?'cc':IF_POSITIONS.includes(pos)?'cif':'cof';
     t2 += `<tr><td class="${cls}" style="font-weight:700;">${pos}</td>`;
     for (let inn = 0; inn < numI; inn++) {
@@ -2612,7 +2732,7 @@ function updatePositionTableInning(inn) {
   const colIdx = inn + 1; // +1 for POS column
 
   // Update field positions
-  FIELD_9.forEach((pos, rowIdx) => {
+  getFieldPositions().forEach((pos, rowIdx) => {
     const row = tbody.rows[rowIdx];
     if (!row) return;
     const cell = row.cells[colIdx];
@@ -2627,7 +2747,7 @@ function updatePositionTableInning(inn) {
   // Update bench rows
   const maxBench = Math.max(...benchByInning.map(b=>b.length), 0);
   for (let slot = 0; slot < maxBench; slot++) {
-    const row = tbody.rows[FIELD_9.length + slot];
+    const row = tbody.rows[getFieldPositions().length + slot];
     if (!row) continue;
     const cell = row.cells[colIdx];
     if (!cell) continue;
@@ -2666,7 +2786,7 @@ function recalcSitCounts() {
     for (let inn = 0; inn < numI; inn++) {
       const pos = getPos(lineup[inn], pid, benchByInning[inn]);
       if (['1B','2B','3B','SS'].includes(pos)) ifCount++;
-      if (['LF','CF','RF'].includes(pos)) ofCount++;
+      if (isOfPos(pos)) ofCount++;
     }
     const ifCell = row.cells[row.cells.length - 2];
     if (ifCell) ifCell.textContent = ifCount || '';
@@ -2849,6 +2969,14 @@ document.addEventListener('DOMContentLoaded', function initResponsive(){
       <div class="mob-settings-panel">
         <div class="mob-panel-head">⚙ Game Rules</div>
         <div class="mob-panel-body">
+          <div class="mob-field">
+            <label class="mob-field-label">Outfielders on the Field</label>
+            <div class="mob-range-row">
+              <input class="mob-range-input" type="range" id="mob-ofCount" min="3" max="5" value="3" oninput="setOfCount(this.value)">
+              <div class="mob-range-val" id="mob-ofCountVal">3</div>
+            </div>
+            <div style="font-size:10px;color:#8A9AAA;margin-top:4px;">3 OF = 9 in the field &middot; 4 = 10 &middot; 5 = 11</div>
+          </div>
           <div class="mob-field">
             <label class="mob-field-label">Innings per Game</label>
             <div class="mob-range-row">
